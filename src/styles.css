@@ -26,6 +26,125 @@ body::before {
   position: fixed;
 }
 
+.access-page {
+  align-items: center;
+  background:
+    radial-gradient(circle at 28% 18%, rgba(0, 207, 255, 0.2), transparent 30%),
+    radial-gradient(circle at 78% 72%, rgba(255, 202, 58, 0.12), transparent 28%),
+    linear-gradient(135deg, #050b13 0%, #081728 54%, #06111d 100%);
+  display: flex;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.access-card {
+  backdrop-filter: blur(16px);
+  background: linear-gradient(145deg, rgba(9, 31, 51, 0.9), rgba(5, 16, 28, 0.96));
+  border: 1px solid rgba(125, 249, 255, 0.22);
+  border-radius: 8px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  margin: 0 auto;
+  max-width: 480px;
+  padding: 28px;
+  position: relative;
+  width: 100%;
+}
+
+.access-card::before {
+  background: linear-gradient(90deg, #ff5c5c, #ffbe3d, #35dfb6, #43d7ff);
+  content: "";
+  height: 2px;
+  inset: 0 0 auto;
+  position: absolute;
+}
+
+.access-badge {
+  align-items: center;
+  color: #69dfff;
+  display: inline-flex;
+  font-size: 13px;
+  gap: 7px;
+  margin-bottom: 16px;
+}
+
+.access-card h1 {
+  font-size: 30px;
+  letter-spacing: 0;
+  margin: 0 0 10px;
+}
+
+.access-card p {
+  color: #9dc8dc;
+  line-height: 1.65;
+  margin: 0 0 22px;
+}
+
+.access-form {
+  display: grid;
+  gap: 14px;
+}
+
+.access-form label {
+  color: #95cfe8;
+  display: grid;
+  font-size: 13px;
+  gap: 7px;
+}
+
+.access-input {
+  position: relative;
+}
+
+.access-input svg {
+  color: #69dfff;
+  left: 12px;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.access-input input {
+  padding-left: 38px;
+}
+
+.access-form button,
+.session-chip {
+  align-items: center;
+  background: linear-gradient(135deg, #0fb5c7, #168ca4);
+  border: 1px solid rgba(125, 249, 255, 0.4);
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 700;
+  gap: 7px;
+  justify-content: center;
+}
+
+.access-form button {
+  height: 44px;
+}
+
+.access-form button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.access-error {
+  background: rgba(255, 92, 92, 0.12);
+  border: 1px solid rgba(255, 92, 92, 0.28);
+  border-radius: 8px;
+  color: #ffb8b8;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+.session-chip {
+  height: 40px;
+  padding: 0 12px;
+}
+
 button,
 input,
 select {

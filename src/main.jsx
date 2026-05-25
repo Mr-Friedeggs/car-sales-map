@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as echarts from "echarts";
-import { ArrowLeft, BarChart3, Car, Check, ChevronDown, Factory, GitCompare, MapPinned, Search, X } from "lucide-react";
+import { ArrowLeft, BarChart3, Car, Check, ChevronDown, Factory, GitCompare, KeyRound, LogOut, MapPinned, Search, ShieldCheck, X } from "lucide-react";
+import { claimInvite, clearInviteSession, getSavedInviteSession, isAccessGateConfigured, saveInviteSession, trackVisitEvent } from "./access";
 import "./styles.css";
 
 const numberFmt = new Intl.NumberFormat("zh-CN");
@@ -744,7 +745,70 @@ function ModelInsights({ insights }) {
   );
 }
 
-function App() {
+function InviteGate({ onAccessGranted }) {
+  const [code, setCode] = useState("");
+  const [visitorName, setVisitorName] = useState("");
+  const [visitorCompany, setVisitorCompany] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!code.trim()) {
+      setMessage("请输入邀请码");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const session = await claimInvite({ code, visitorName, visitorCompany });
+      saveInviteSession(session);
+      onAccessGranted(session);
+    } catch (error) {
+      setMessage(error.message || "邀请码校验失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main className="access-page">
+      <section className="access-card">
+        <div className="access-badge">
+          <ShieldCheck size={18} />
+          邀请访问
+        </div>
+        <h1>全国汽车销量地图</h1>
+        <p>请输入邀请码进入看板。访问会被记录，用于了解评审反馈和使用情况。</p>
+        <form className="access-form" onSubmit={submit}>
+          <label>
+            <span>邀请码</span>
+            <div className="access-input">
+              <KeyRound size={16} />
+              <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="例如 DEMO2026" autoFocus />
+            </div>
+          </label>
+          <label>
+            <span>姓名</span>
+            <input value={visitorName} onChange={(event) => setVisitorName(event.target.value)} placeholder="可选，方便你识别访问者" />
+          </label>
+          <label>
+            <span>公司</span>
+            <input value={visitorCompany} onChange={(event) => setVisitorCompany(event.target.value)} placeholder="可选" />
+          </label>
+          {message ? <div className="access-error">{message}</div> : null}
+          <button type="submit" disabled={loading}>
+            {loading ? "正在校验..." : "进入看板"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function App({ accessSession, onLogout }) {
   const { data, error } = useSalesData();
   const [months, setMonths] = useState([]);
   const [modelId, setModelId] = useState("");
@@ -850,6 +914,34 @@ function App() {
     [compareMode, selectedModel, current, previousCurrent, lastYearCurrent, selectedMonths],
   );
 
+  useEffect(() => {
+    if (!accessSession?.session_token || !current) return undefined;
+    const timer = window.setTimeout(() => {
+      trackVisitEvent(accessSession.session_token, "view_changed", {
+        months: selectedMonths,
+        manufacturers,
+        energies,
+        levels,
+        model_a: selectedModelLabel || "总体",
+        model_b: compareModelLabel || null,
+        province: selectedProvince || null,
+        total: current.total ?? 0,
+      });
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    accessSession?.session_token,
+    selectedMonths,
+    manufacturers,
+    energies,
+    levels,
+    selectedModelLabel,
+    compareModelLabel,
+    selectedProvince,
+    current,
+  ]);
+
   if (error || monthSlice.error) {
     return <main className="state-page">{error || monthSlice.error}</main>;
   }
@@ -866,6 +958,12 @@ function App() {
           <h1>销量地图 MVP</h1>
         </div>
         <div className="meta">
+          {accessSession ? (
+            <button type="button" className="session-chip" onClick={onLogout}>
+              <LogOut size={15} />
+              退出邀请码
+            </button>
+          ) : null}
           <span>{formatMonthLabel(selectedMonths)}</span>
           <span>{numberFmt.format(data.totalVolume)} 辆</span>
         </div>
@@ -987,4 +1085,26 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+function Root() {
+  const [accessSession, setAccessSession] = useState(() => getSavedInviteSession());
+
+  useEffect(() => {
+    if (!accessSession?.session_token) return;
+    trackVisitEvent(accessSession.session_token, "app_open", {
+      referrer: document.referrer || null,
+    });
+  }, [accessSession?.session_token]);
+
+  const logout = () => {
+    clearInviteSession();
+    setAccessSession(null);
+  };
+
+  if (isAccessGateConfigured && !accessSession?.session_token) {
+    return <InviteGate onAccessGranted={setAccessSession} />;
+  }
+
+  return <App accessSession={isAccessGateConfigured ? accessSession : null} onLogout={logout} />;
+}
+
+createRoot(document.getElementById("root")).render(<Root />);
