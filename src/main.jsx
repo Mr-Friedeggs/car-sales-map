@@ -810,7 +810,7 @@ function InviteGate({ onAccessGranted }) {
 
 function App({ accessSession, onLogout }) {
   const { data, error } = useSalesData();
-  const [months, setMonths] = useState(null);
+  const [months, setMonths] = useState([]);
   const [modelId, setModelId] = useState("");
   const [compareModelId, setCompareModelId] = useState("");
   const [manufacturers, setManufacturers] = useState([]);
@@ -823,11 +823,14 @@ function App({ accessSession, onLogout }) {
     const latestMonth = data?.months?.at(-1);
     return latestMonth ? [latestMonth] : [];
   }, [data]);
+  const monthOptions = useMemo(
+    () => [...(data?.months ?? [])].sort().reverse().map((name) => ({ name, value: 0 })),
+    [data],
+  );
   const selectedMonths = useMemo(() => {
     if (!data?.months?.length) return [];
-    const monthValues = months === null ? defaultMonths : months;
-    const explicitMonths = monthValues.filter((month) => validMonths.has(month)).sort();
-    return explicitMonths.length ? explicitMonths : [...(data?.months ?? [])].sort();
+    const explicitMonths = months.filter((month) => validMonths.has(month)).sort();
+    return explicitMonths.length ? explicitMonths : defaultMonths;
   }, [months, defaultMonths, validMonths, data]);
   const previousMonths = useMemo(() => derivePreviousPeriod(selectedMonths).filter((month) => validMonths.has(month)), [selectedMonths, validMonths]);
   const lastYearMonths = useMemo(() => deriveLastYearPeriod(selectedMonths).filter((month) => validMonths.has(month)), [selectedMonths, validMonths]);
@@ -976,8 +979,8 @@ function App({ accessSession, onLogout }) {
       </header>
 
       <section className="toolbar">
-        <MultiSelectField icon={<MapPinned size={16} />} label="月份" options={data.months.map((name) => ({ name, value: 0 }))} values={months ?? defaultMonths} onChange={(value) => {
-          setMonths(value);
+        <MultiSelectField icon={<MapPinned size={16} />} label="月份" options={monthOptions} values={selectedMonths} onChange={(value) => {
+          setMonths(value.length ? value : defaultMonths);
           setSelectedProvince("");
         }} />
         <MultiSelectField icon={<Factory size={16} />} label="厂商" options={data.filters.manufacturers} values={manufacturers} onChange={setManufacturers} />
