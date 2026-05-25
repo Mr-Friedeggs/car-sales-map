@@ -18,15 +18,17 @@ on conflict (key) do update
   set value = excluded.value,
       updated_at = now();
 
+drop function if exists public.admin_create_invite(text, text, text, timestamptz, integer, text, text, text);
+
 create or replace function public.admin_create_invite(
-  admin_secret text,
-  owner_name text,
-  company text default null,
-  expires_at timestamptz default null,
-  max_uses integer default 1,
-  custom_code text default null,
-  label text default null,
-  notes text default null
+  input_admin_secret text,
+  input_owner_name text,
+  input_company text default null,
+  input_expires_at timestamptz default null,
+  input_max_uses integer default 1,
+  input_custom_code text default null,
+  input_label text default null,
+  input_notes text default null
 )
 returns table (
   code text,
@@ -53,16 +55,16 @@ begin
     raise exception 'Admin password is not configured';
   end if;
 
-  if encode(digest(coalesce(admin_secret, ''), 'sha256'), 'hex') <> expected_hash then
+  if encode(digest(coalesce(input_admin_secret, ''), 'sha256'), 'hex') <> expected_hash then
     raise exception 'Admin password is incorrect';
   end if;
 
-  if nullif(trim(owner_name), '') is null then
+  if nullif(trim(input_owner_name), '') is null then
     raise exception 'Owner name is required';
   end if;
 
-  if custom_code is not null and trim(custom_code) <> '' then
-    candidate_code := upper(trim(custom_code));
+  if input_custom_code is not null and trim(input_custom_code) <> '' then
+    candidate_code := upper(trim(input_custom_code));
   else
     loop
       attempts := attempts + 1;
@@ -87,21 +89,21 @@ begin
   )
   values (
     candidate_code,
-    coalesce(nullif(label, ''), trim(owner_name) || ' invite'),
-    trim(owner_name),
-    nullif(trim(company), ''),
-    coalesce(max_uses, 1),
-    expires_at,
-    nullif(trim(notes), '')
+    coalesce(nullif(input_label, ''), trim(input_owner_name) || ' invite'),
+    trim(input_owner_name),
+    nullif(trim(input_company), ''),
+    coalesce(input_max_uses, 1),
+    input_expires_at,
+    nullif(trim(input_notes), '')
   );
 
   return query
   select
     candidate_code,
-    trim(owner_name),
-    nullif(trim(company), ''),
-    coalesce(max_uses, 1),
-    expires_at;
+    trim(input_owner_name),
+    nullif(trim(input_company), ''),
+    coalesce(input_max_uses, 1),
+    input_expires_at;
 end;
 $$;
 

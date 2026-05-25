@@ -69,14 +69,14 @@ export const createInviteCode = async ({
   notes,
 }) => {
   const result = await rpc("admin_create_invite", {
-    admin_secret: adminSecret.trim(),
-    owner_name: ownerName.trim(),
-    company: company.trim() || null,
-    expires_at: expiresAt || null,
-    max_uses: 1,
-    custom_code: customCode.trim() || null,
-    label: ownerName.trim() ? `${ownerName.trim()}专属邀请码` : "专属邀请码",
-    notes: notes.trim() || "管理员页面生成",
+    input_admin_secret: adminSecret.trim(),
+    input_owner_name: ownerName.trim(),
+    input_company: company.trim() || null,
+    input_expires_at: expiresAt || null,
+    input_max_uses: 1,
+    input_custom_code: customCode.trim() || null,
+    input_label: ownerName.trim() ? `${ownerName.trim()}专属邀请码` : "专属邀请码",
+    input_notes: notes.trim() || "管理员页面生成",
   });
 
   return Array.isArray(result) ? result[0] : result;
