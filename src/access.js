@@ -60,6 +60,28 @@ export const claimInvite = async ({ code, visitorName, visitorCompany }) => {
   return Array.isArray(result) ? result[0] : result;
 };
 
+export const createInviteCode = async ({
+  adminSecret,
+  ownerName,
+  company,
+  expiresAt,
+  customCode,
+  notes,
+}) => {
+  const result = await rpc("admin_create_invite", {
+    admin_secret: adminSecret.trim(),
+    owner_name: ownerName.trim(),
+    company: company.trim() || null,
+    expires_at: expiresAt || null,
+    max_uses: 1,
+    custom_code: customCode.trim() || null,
+    label: ownerName.trim() ? `${ownerName.trim()}专属邀请码` : "专属邀请码",
+    notes: notes.trim() || "管理员页面生成",
+  });
+
+  return Array.isArray(result) ? result[0] : result;
+};
+
 export const trackVisitEvent = async (sessionToken, eventType, payload = {}) => {
   if (!isAccessGateConfigured || !sessionToken) return null;
 

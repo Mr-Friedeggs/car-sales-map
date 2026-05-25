@@ -107,6 +107,36 @@ VITE_SUPABASE_ANON_KEY
 - `app_open`
 - `view_changed`
 
+## 7. 管理员生成邀请码
+
+先在 Supabase SQL Editor 执行 `supabase/admin-invite.sql`。
+
+执行前请把 SQL 里的默认口令改掉：
+
+```sql
+digest('CHANGE_ME_ADMIN_PASSWORD', 'sha256')
+```
+
+例如改成：
+
+```sql
+digest('your-real-admin-password', 'sha256')
+```
+
+线上管理员入口：
+
+```text
+https://mr-friedeggs.github.io/car-sales-map/?admin=1
+```
+
+本地管理员入口：
+
+```text
+http://127.0.0.1:5175/?admin=1
+```
+
+管理员页会生成 `max_uses = 1` 的一次性邀请码。用户第一次输入成功后，浏览器会保存 session；如果他把邀请码发给别人，别人再次输入会因为次数用完而失败。
+
 ## 注意
 
 这个 MVP 会挡住普通访问入口，但静态 JSON 数据仍然公开放在 GitHub Pages 上。要做真正的数据保护，需要把销售数据也迁到后端或 Supabase Storage，并通过受保护接口读取。

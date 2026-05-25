@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as echarts from "echarts";
-import { ArrowLeft, BarChart3, Car, Check, ChevronDown, Factory, GitCompare, KeyRound, LogOut, MapPinned, Search, ShieldCheck, X } from "lucide-react";
-import { claimInvite, clearInviteSession, getSavedInviteSession, isAccessGateConfigured, saveInviteSession, trackVisitEvent } from "./access";
+import { ArrowLeft, BarChart3, Car, Check, ChevronDown, Copy, Factory, GitCompare, KeyRound, LogOut, MapPinned, Search, ShieldCheck, UserPlus, X } from "lucide-react";
+import { claimInvite, clearInviteSession, createInviteCode, getSavedInviteSession, isAccessGateConfigured, saveInviteSession, trackVisitEvent } from "./access";
 import "./styles.css";
 
 const numberFmt = new Intl.NumberFormat("zh-CN");
@@ -808,6 +808,124 @@ function InviteGate({ onAccessGranted }) {
   );
 }
 
+function AdminInvitePage() {
+  const [adminSecret, setAdminSecret] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [company, setCompany] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [customCode, setCustomCode] = useState("");
+  const [notes, setNotes] = useState("");
+  const [created, setCreated] = useState(null);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!adminSecret.trim() || !ownerName.trim()) {
+      setMessage("请输入管理口令和邀请人姓名");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+    setCreated(null);
+
+    try {
+      const invite = await createInviteCode({
+        adminSecret,
+        ownerName,
+        company,
+        expiresAt,
+        customCode,
+        notes,
+      });
+      setCreated(invite);
+      setCustomCode("");
+      setOwnerName("");
+      setCompany("");
+      setNotes("");
+    } catch (error) {
+      setMessage(error.message || "邀请码生成失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyCode = async () => {
+    if (!created?.code) return;
+    await navigator.clipboard.writeText(created.code);
+    setMessage("邀请码已复制");
+  };
+
+  if (!isAccessGateConfigured) {
+    return (
+      <main className="access-page">
+        <section className="access-card">
+          <div className="access-badge">
+            <UserPlus size={18} />
+            管理员入口
+          </div>
+          <h1>邀请码生成</h1>
+          <p>当前页面还没有配置 Supabase，无法创建邀请码。</p>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="access-page">
+      <section className="access-card admin-card">
+        <div className="access-badge">
+          <UserPlus size={18} />
+          管理员入口
+        </div>
+        <h1>生成专属邀请码</h1>
+        <p>每个邀请码默认只能使用一次，用户首次通过后会绑定当前浏览器会话。</p>
+        <form className="access-form" onSubmit={submit}>
+          <label>
+            <span>管理口令</span>
+            <input type="password" value={adminSecret} onChange={(event) => setAdminSecret(event.target.value)} placeholder="只给管理员使用" />
+          </label>
+          <label>
+            <span>邀请人姓名</span>
+            <input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} placeholder="例如 张三" />
+          </label>
+          <label>
+            <span>公司</span>
+            <input value={company} onChange={(event) => setCompany(event.target.value)} placeholder="可选" />
+          </label>
+          <label>
+            <span>过期时间</span>
+            <input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} />
+          </label>
+          <label>
+            <span>自定义邀请码</span>
+            <input value={customCode} onChange={(event) => setCustomCode(event.target.value)} placeholder="可选，不填则自动生成" />
+          </label>
+          <label>
+            <span>备注</span>
+            <input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="可选" />
+          </label>
+          {created ? (
+            <div className="created-invite">
+              <span>已生成邀请码</span>
+              <strong>{created.code}</strong>
+              <button type="button" onClick={copyCode}>
+                <Copy size={15} />
+                复制
+              </button>
+            </div>
+          ) : null}
+          {message ? <div className="access-error neutral">{message}</div> : null}
+          <button type="submit" disabled={loading}>
+            {loading ? "正在生成..." : "生成一次性邀请码"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
 function App({ accessSession, onLogout }) {
   const { data, error } = useSalesData();
   const [months, setMonths] = useState([]);
@@ -1096,6 +1214,7 @@ function App({ accessSession, onLogout }) {
 
 function Root() {
   const [accessSession, setAccessSession] = useState(() => getSavedInviteSession());
+  const isAdminRoute = new URLSearchParams(window.location.search).get("admin") === "1";
 
   useEffect(() => {
     if (!accessSession?.session_token) return;
@@ -1108,6 +1227,10 @@ function Root() {
     clearInviteSession();
     setAccessSession(null);
   };
+
+  if (isAdminRoute) {
+    return <AdminInvitePage />;
+  }
 
   if (isAccessGateConfigured && !accessSession?.session_token) {
     return <InviteGate onAccessGranted={setAccessSession} />;
