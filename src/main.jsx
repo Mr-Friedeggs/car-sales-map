@@ -810,7 +810,7 @@ function InviteGate({ onAccessGranted }) {
 
 function App({ accessSession, onLogout }) {
   const { data, error } = useSalesData();
-  const [months, setMonths] = useState([]);
+  const [months, setMonths] = useState(null);
   const [modelId, setModelId] = useState("");
   const [compareModelId, setCompareModelId] = useState("");
   const [manufacturers, setManufacturers] = useState([]);
@@ -819,10 +819,16 @@ function App({ accessSession, onLogout }) {
   const [selectedProvince, setSelectedProvince] = useState("");
 
   const validMonths = useMemo(() => new Set(data?.months ?? []), [data]);
+  const defaultMonths = useMemo(() => {
+    const latestMonth = data?.months?.at(-1);
+    return latestMonth ? [latestMonth] : [];
+  }, [data]);
   const selectedMonths = useMemo(() => {
-    const explicitMonths = months.filter((month) => validMonths.has(month)).sort();
+    if (!data?.months?.length) return [];
+    const monthValues = months === null ? defaultMonths : months;
+    const explicitMonths = monthValues.filter((month) => validMonths.has(month)).sort();
     return explicitMonths.length ? explicitMonths : [...(data?.months ?? [])].sort();
-  }, [months, validMonths, data]);
+  }, [months, defaultMonths, validMonths, data]);
   const previousMonths = useMemo(() => derivePreviousPeriod(selectedMonths).filter((month) => validMonths.has(month)), [selectedMonths, validMonths]);
   const lastYearMonths = useMemo(() => deriveLastYearPeriod(selectedMonths).filter((month) => validMonths.has(month)), [selectedMonths, validMonths]);
   const allNeededMonths = useMemo(
@@ -970,7 +976,7 @@ function App({ accessSession, onLogout }) {
       </header>
 
       <section className="toolbar">
-        <MultiSelectField icon={<MapPinned size={16} />} label="月份" options={data.months.map((name) => ({ name, value: 0 }))} values={months} onChange={(value) => {
+        <MultiSelectField icon={<MapPinned size={16} />} label="月份" options={data.months.map((name) => ({ name, value: 0 }))} values={months ?? defaultMonths} onChange={(value) => {
           setMonths(value);
           setSelectedProvince("");
         }} />
