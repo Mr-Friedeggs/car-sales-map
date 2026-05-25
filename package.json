@@ -1,0 +1,26 @@
+{
+  "name": "china-car-sales-map",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "npm run data && vite build",
+    "build:pages": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "data": "node scripts/build-data.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "csv-parse": "^6.1.0",
+    "echarts": "^6.0.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "vite": "^7.1.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0",
+    "typescript": "^5.9.0"
+  }
+}
