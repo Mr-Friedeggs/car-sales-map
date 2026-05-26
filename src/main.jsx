@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as echarts from "echarts";
-import { ArrowLeft, BarChart3, Car, Check, ChevronDown, Copy, Factory, GitCompare, KeyRound, LogOut, MapPinned, Search, ShieldCheck, UserPlus, X } from "lucide-react";
-import { claimInvite, clearInviteSession, createInviteCode, getSavedInviteSession, isAccessGateConfigured, saveInviteSession, trackVisitEvent } from "./access";
+import { ArrowLeft, BarChart3, Bot, Car, Check, ChevronDown, Copy, Database, Factory, GitCompare, KeyRound, ListOrdered, LogOut, MapPinned, Route, Search, Send, ShieldCheck, Sparkles, UserPlus, X } from "lucide-react";
+import { askMarketAgent, claimInvite, clearInviteSession, createInviteCode, getSavedInviteSession, isAccessGateConfigured, isMarketAgentConfigured, saveInviteSession, trackVisitEvent } from "./access";
 import "./styles.css";
 
 const numberFmt = new Intl.NumberFormat("zh-CN");
@@ -745,6 +745,175 @@ function ModelInsights({ insights }) {
   );
 }
 
+const agentExamples = [
+  "最近三个月整体市场增长由哪些省份驱动？",
+  "当前筛选范围里，哪些区域还有机会补量？",
+  "车型 A 和车型 B 的核心城市差异是什么？",
+  "2026-03 新能源 SUV 的省份集中度如何？",
+];
+
+const formatEvidenceValue = (value) => {
+  if (typeof value === "number") {
+    if (Math.abs(value) > 1 && Number.isInteger(value)) return numberFmt.format(value);
+    return value.toFixed(Math.abs(value) < 1 ? 4 : 1);
+  }
+  return String(value ?? "-");
+};
+
+const formatEvidenceDimensions = (dimensions = {}) =>
+  Object.entries(dimensions)
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : value}`)
+    .join(" · ");
+
+function AgentWorkbench({ enabled, accessSession, context, onApplyViewState }) {
+  const [question, setQuestion] = useState("");
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const disabledReason = !isMarketAgentConfigured
+    ? "Agent endpoint 未配置。请配置 Supabase 和 VITE_MARKET_AGENT_URL，或使用默认 Supabase Edge Function 地址。"
+    : !accessSession?.session_token
+      ? "Agent 仅对有效邀请会话开放。"
+      : "";
+
+  const submit = async (event) => {
+    event?.preventDefault();
+    const cleanQuestion = question.trim();
+    if (!cleanQuestion || loading || !enabled) return;
+
+    setLoading(true);
+    setError("");
+    try {
+      const result = await askMarketAgent({
+        question: cleanQuestion,
+        sessionToken: accessSession.session_token,
+        context,
+      });
+      setReport(result);
+    } catch (err) {
+      setError(err.message || "Agent 分析失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section className="panel agent-workbench">
+      <div className="panel-title split-title">
+        <span className="title-left">
+          <Bot size={18} />
+          <h2>汽车市场分析 Agent</h2>
+        </span>
+        <span className={enabled ? "agent-status ready" : "agent-status"}>{enabled ? "已连接" : "不可用"}</span>
+      </div>
+
+      <form className="agent-form" onSubmit={submit}>
+        <textarea
+          value={question}
+          onChange={(event) => setQuestion(event.target.value)}
+          placeholder="输入业务问题，例如：最近三个月哪些省份拉动新能源 SUV 增长？"
+          rows={4}
+          disabled={!enabled || loading}
+        />
+        <button type="submit" disabled={!enabled || loading || !question.trim()}>
+          {loading ? <Sparkles size={16} /> : <Send size={16} />}
+          {loading ? "分析中" : "开始分析"}
+        </button>
+      </form>
+
+      {disabledReason ? <div className="agent-empty">{disabledReason}</div> : null}
+      {error ? <div className="agent-error">{error}</div> : null}
+
+      <div className="agent-examples">
+        {agentExamples.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setQuestion(item)}
+            disabled={!enabled || loading}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+
+      {report ? (
+        <div className="agent-report">
+          <div className="agent-summary">
+            <span>结论</span>
+            <h3>{report.title}</h3>
+            <p>{report.summary}</p>
+            {report.suggestedViewState ? (
+              <button type="button" onClick={() => onApplyViewState(report.suggestedViewState)}>
+                <MapPinned size={15} />
+                应用到地图
+              </button>
+            ) : null}
+          </div>
+
+          <div className="agent-section">
+            <span className="agent-section-title">
+              <Sparkles size={15} />
+              关键发现
+            </span>
+            <div className="agent-findings">
+              {(report.findings ?? []).map((finding, index) => (
+                <article key={`${finding.claim}-${index}`}>
+                  <p>{finding.claim}</p>
+                  <div>
+                    {(finding.evidenceIds ?? []).map((id) => (
+                      <em key={id}>{id}</em>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="agent-section">
+            <span className="agent-section-title">
+              <Route size={15} />
+              分析路径
+            </span>
+            <div className="agent-path">
+              {(report.analysisPath ?? []).map((step, index) => (
+                <article key={`${step.tool}-${index}`}>
+                  <strong>{index + 1}</strong>
+                  <div>
+                    <span>{step.step}</span>
+                    <small>{step.outputSummary}</small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="agent-section">
+            <span className="agent-section-title">
+              <Database size={15} />
+              证据链
+            </span>
+            <div className="agent-evidence">
+              {(report.evidence ?? []).map((item) => (
+                <article key={item.id}>
+                  <strong>{item.id}</strong>
+                  <div>
+                    <span>{item.metric}: {formatEvidenceValue(item.value)}</span>
+                    <small>{item.source}</small>
+                    {item.dimensions ? <small>{formatEvidenceDimensions(item.dimensions)}</small> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function InviteGate({ onAccessGranted }) {
   const [code, setCode] = useState("");
   const [visitorName, setVisitorName] = useState("");
@@ -935,6 +1104,7 @@ function App({ accessSession, onLogout }) {
   const [energies, setEnergies] = useState([]);
   const [levels, setLevels] = useState([]);
   const [selectedProvince, setSelectedProvince] = useState("");
+  const [sideTab, setSideTab] = useState("agent");
 
   const validMonths = useMemo(() => new Set(data?.months ?? []), [data]);
   const defaultMonths = useMemo(() => {
@@ -1040,6 +1210,30 @@ function App({ accessSession, onLogout }) {
         : null,
     [compareMode, selectedModel, current, previousCurrent, lastYearCurrent, selectedMonths],
   );
+  const agentContext = useMemo(
+    () => ({
+      months: selectedMonths,
+      modelId: modelId || null,
+      compareModelId: compareModelId || null,
+      manufacturers,
+      energies,
+      levels,
+      selectedProvince: selectedProvince || null,
+    }),
+    [selectedMonths, modelId, compareModelId, manufacturers, energies, levels, selectedProvince],
+  );
+  const applyAgentViewState = (state = {}) => {
+    if (Array.isArray(state.months)) {
+      const nextMonths = state.months.filter((month) => validMonths.has(month));
+      if (nextMonths.length) setMonths(nextMonths);
+    }
+    if ("manufacturers" in state && Array.isArray(state.manufacturers)) setManufacturers(state.manufacturers);
+    if ("energies" in state && Array.isArray(state.energies)) setEnergies(state.energies);
+    if ("levels" in state && Array.isArray(state.levels)) setLevels(state.levels);
+    if ("modelId" in state) setModelId(state.modelId || "");
+    if ("compareModelId" in state) setCompareModelId(state.compareModelId || "");
+    if ("selectedProvince" in state) setSelectedProvince(state.selectedProvince || "");
+  };
 
   useEffect(() => {
     if (!accessSession?.session_token || !current) return undefined;
@@ -1194,17 +1388,36 @@ function App({ accessSession, onLogout }) {
           )}
         </div>
         <aside className="side">
-          <RankingTabs modelRows={scopedModelRows} modelScopeLabel={modelScopeLabel} showModelRanking={!compareMode && scopedModelRows.length > 0}>
-            <DrillRanking
-              provinceRows={provinceRows}
-              cityRows={cityRows}
-              selectedProvince={selectedProvince}
-              onProvinceChange={setSelectedProvince}
-              compareMode={compareMode}
-              primaryName={selectedModelLabel}
-              compareName={compareModelLabel}
+          <div className="side-tabbar">
+            <button className={sideTab === "agent" ? "active" : ""} type="button" onClick={() => setSideTab("agent")}>
+              <Bot size={16} />
+              Agent
+            </button>
+            <button className={sideTab === "ranking" ? "active" : ""} type="button" onClick={() => setSideTab("ranking")}>
+              <ListOrdered size={16} />
+              排行
+            </button>
+          </div>
+          {sideTab === "agent" ? (
+            <AgentWorkbench
+              enabled={Boolean(isMarketAgentConfigured && accessSession?.session_token)}
+              accessSession={accessSession}
+              context={agentContext}
+              onApplyViewState={applyAgentViewState}
             />
-          </RankingTabs>
+          ) : (
+            <RankingTabs modelRows={scopedModelRows} modelScopeLabel={modelScopeLabel} showModelRanking={!compareMode && scopedModelRows.length > 0}>
+              <DrillRanking
+                provinceRows={provinceRows}
+                cityRows={cityRows}
+                selectedProvince={selectedProvince}
+                onProvinceChange={setSelectedProvince}
+                compareMode={compareMode}
+                primaryName={selectedModelLabel}
+                compareName={compareModelLabel}
+              />
+            </RankingTabs>
+          )}
         </aside>
       </section>
       <ModelInsights insights={modelInsights} />

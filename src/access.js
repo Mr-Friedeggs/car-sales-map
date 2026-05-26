@@ -1,7 +1,10 @@
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.replace(/\/$/, "") ?? "";
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
+const configuredMarketAgentUrl = import.meta.env.VITE_MARKET_AGENT_URL?.replace(/\/$/, "") ?? "";
 
 export const isAccessGateConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export const marketAgentUrl = configuredMarketAgentUrl || (supabaseUrl ? `${supabaseUrl}/functions/v1/market-agent` : "");
+export const isMarketAgentConfigured = Boolean(isAccessGateConfigured && marketAgentUrl);
 
 const SESSION_KEY = "car_sales_invite_session";
 
@@ -97,4 +100,29 @@ export const trackVisitEvent = async (sessionToken, eventType, payload = {}) => 
     console.warn("[visit-log]", error.message);
     return null;
   }
+};
+
+export const askMarketAgent = async ({ question, sessionToken, context }) => {
+  if (!isMarketAgentConfigured) {
+    throw new Error("Agent endpoint is not configured");
+  }
+
+  const response = await fetch(marketAgentUrl, {
+    method: "POST",
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${supabaseAnonKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ question, sessionToken, context }),
+  });
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    throw new Error(data?.message || "Agent 分析失败，请稍后再试");
+  }
+
+  return data;
 };

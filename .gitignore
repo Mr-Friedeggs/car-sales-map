@@ -5,4 +5,5 @@ dist/
 *.xlsx
 .env.local
 .env.*.local
+supabase/.temp/
 !.github/
