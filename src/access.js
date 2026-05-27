@@ -6,7 +6,8 @@ export const isAccessGateConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const marketAgentUrl = configuredMarketAgentUrl || (supabaseUrl ? `${supabaseUrl}/functions/v1/market-agent` : "");
 export const isMarketAgentConfigured = Boolean(isAccessGateConfigured && marketAgentUrl);
 
-const SESSION_KEY = "car_sales_invite_session";
+const LEGACY_SESSION_KEY = "car_sales_invite_session";
+const SESSION_KEY = supabaseUrl ? `${LEGACY_SESSION_KEY}:${supabaseUrl}` : LEGACY_SESSION_KEY;
 
 const rpc = async (name, payload) => {
   if (!isAccessGateConfigured) {
@@ -49,6 +50,7 @@ export const saveInviteSession = (session) => {
 
 export const clearInviteSession = () => {
   localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(LEGACY_SESSION_KEY);
 };
 
 export const claimInvite = async ({ code, visitorName, visitorCompany }) => {
@@ -121,7 +123,9 @@ export const askMarketAgent = async ({ question, sessionToken, context }) => {
   const data = text ? JSON.parse(text) : null;
 
   if (!response.ok) {
-    throw new Error(data?.message || "Agent 分析失败，请稍后再试");
+    const error = new Error(data?.message || "Agent 分析失败，请稍后再试");
+    error.status = response.status;
+    throw error;
   }
 
   return data;

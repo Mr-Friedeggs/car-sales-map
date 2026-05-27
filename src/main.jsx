@@ -766,7 +766,7 @@ const formatEvidenceDimensions = (dimensions = {}) =>
     .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : value}`)
     .join(" · ");
 
-function AgentWorkbench({ enabled, accessSession, context, onApplyViewState }) {
+function AgentWorkbench({ enabled, accessSession, context, onApplyViewState, onSessionExpired }) {
   const [question, setQuestion] = useState("");
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -793,7 +793,13 @@ function AgentWorkbench({ enabled, accessSession, context, onApplyViewState }) {
       });
       setReport(result);
     } catch (err) {
-      setError(err.message || "Agent 分析失败");
+      if (err.status === 401 || /访问会话无效|已失效/.test(err.message || "")) {
+        setReport(null);
+        setError("访问会话已失效，请重新输入邀请码。");
+        onSessionExpired?.();
+      } else {
+        setError(err.message || "Agent 分析失败");
+      }
     } finally {
       setLoading(false);
     }
@@ -1404,6 +1410,7 @@ function App({ accessSession, onLogout }) {
               accessSession={accessSession}
               context={agentContext}
               onApplyViewState={applyAgentViewState}
+              onSessionExpired={onLogout}
             />
           ) : (
             <RankingTabs modelRows={scopedModelRows} modelScopeLabel={modelScopeLabel} showModelRanking={!compareMode && scopedModelRows.length > 0}>
