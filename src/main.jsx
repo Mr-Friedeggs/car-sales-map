@@ -6,7 +6,12 @@ import { askMarketAgent, claimInvite, clearInviteSession, createInviteCode, getS
 import "./styles.css";
 
 const numberFmt = new Intl.NumberFormat("zh-CN");
-const assetUrl = (path) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
+const dataBaseUrl = import.meta.env.VITE_DATA_BASE_URL?.replace(/\/+$/, "") ?? "";
+const assetUrl = (path) => {
+  const cleanPath = path.replace(/^\/+/, "");
+  if (dataBaseUrl && cleanPath.startsWith("data/")) return `${dataBaseUrl}/${cleanPath}`;
+  return `${import.meta.env.BASE_URL}${cleanPath}`;
+};
 const provinceNameMap = {
   北京: "北京市",
   天津: "天津市",
@@ -752,6 +757,13 @@ const agentExamples = [
   "2026-03 新能源 SUV 的省份集中度如何？",
 ];
 
+const agentRunningSteps = [
+  { afterSeconds: 0, label: "校验访问会话", detail: "正在确认邀请码会话，并带上当前地图筛选条件。" },
+  { afterSeconds: 3, label: "读取销量数据", detail: "正在让数据工具读取销量索引和相关月份文件。" },
+  { afterSeconds: 7, label: "调用模型拆解", detail: "正在让 Agent 拆解问题、选择工具并组织分析路径。" },
+  { afterSeconds: 11, label: "生成证据链", detail: "正在校验 evidence id，生成可追溯的结构化报告。" },
+];
+
 const formatEvidenceValue = (value) => {
   if (typeof value === "number") {
     if (Math.abs(value) > 1 && Number.isInteger(value)) return numberFmt.format(value);
@@ -770,7 +782,28 @@ function AgentWorkbench({ enabled, accessSession, context, onApplyViewState, onS
   const [question, setQuestion] = useState("");
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!loading) {
+      setElapsedSeconds(0);
+      return undefined;
+    }
+
+    const startedAt = Date.now();
+    setElapsedSeconds(0);
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loading]);
+
+  const runningStep = agentRunningSteps.reduce(
+    (current, step) => (elapsedSeconds >= step.afterSeconds ? step : current),
+    agentRunningSteps[0],
+  );
 
   const disabledReason = !isMarketAgentConfigured
     ? "Agent endpoint 未配置。请配置 Supabase 和 VITE_MARKET_AGENT_URL，或使用默认 Supabase Edge Function 地址。"
@@ -831,6 +864,34 @@ function AgentWorkbench({ enabled, accessSession, context, onApplyViewState, onS
 
       {disabledReason ? <div className="agent-empty">{disabledReason}</div> : null}
       {error ? <div className="agent-error">{error}</div> : null}
+
+      {loading ? (
+        <div className="agent-running" role="status" aria-live="polite">
+          <div className="agent-running-head">
+            <span className="agent-spinner" aria-hidden="true">
+              <Sparkles size={16} />
+            </span>
+            <div>
+              <strong>正在分析中</strong>
+              <small>已用时 {elapsedSeconds}s</small>
+            </div>
+          </div>
+          <div className="agent-running-track">
+            {agentRunningSteps.map((step) => (
+              <span
+                key={step.label}
+                className={elapsedSeconds >= step.afterSeconds ? "active" : ""}
+              >
+                {step.label}
+              </span>
+            ))}
+          </div>
+          <p>{runningStep.detail}</p>
+          {elapsedSeconds >= 12 ? (
+            <small className="agent-slow-hint">仍在分析，模型和数据工具可能需要更久。</small>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="agent-examples">
         {agentExamples.map((item) => (

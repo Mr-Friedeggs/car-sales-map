@@ -20,9 +20,12 @@ Edge Function 的分析流程：
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_MARKET_AGENT_URL=https://your-project-ref.supabase.co/functions/v1/market-agent
+VITE_DATA_BASE_URL=
 ```
 
 如果不配置 `VITE_MARKET_AGENT_URL`，前端会默认使用 `${VITE_SUPABASE_URL}/functions/v1/market-agent`。Agent 仅在 Supabase 邀请访问已配置且用户有有效 session 时可用。
+
+`VITE_DATA_BASE_URL` 是可选项，用来把前端的大体积静态销量数据切到 CDN 或对象存储。它应指向站点根地址，不要以 `/data` 结尾；目录需要保留 `data/sales-index.json`、`data/china.json` 和 `data/months/*.json`。不配置时，前端仍从 GitHub Pages 当前站点读取数据。
 
 ## Edge Function Secrets
 
@@ -38,7 +41,7 @@ supabase secrets set AGENT_MAX_REQUESTS_PER_HOUR=20
 
 Supabase 默认会提供 `SUPABASE_URL`、`SUPABASE_ANON_KEY` 和 `SUPABASE_SERVICE_ROLE_KEY`。服务端会优先使用 service role 校验邀请会话；不要把 service role 或 MiniMax key 放进前端环境变量。
 
-`MARKET_DATA_BASE_URL` 应指向能访问静态 `public/data` 的站点根地址，例如 GitHub Pages 或生产站点根 URL，不要以 `/data` 结尾。
+`MARKET_DATA_BASE_URL` 应指向能访问静态 `public/data` 的站点根地址，例如 GitHub Pages、生产站点根 URL 或同一个 CDN 根地址，不要以 `/data` 结尾。为了减少 Agent 读取数据的延迟，建议它和前端的 `VITE_DATA_BASE_URL` 指向同一份更快的数据源。
 
 ## 部署
 
@@ -55,7 +58,7 @@ Agent 函数使用 `--no-verify-jwt` 部署，避免新版 publishable key 被 E
 - `resolve_entities`：解析问题中的月份、车型、厂商、能源和级别候选。
 - `market_overview`：汇总销量、Top 省份、Top 城市、Top 车型。
 - `trend_series`：输出逐月趋势和环比。
-- `growth_drivers`：对比上期或去年同期，识别增长/下滑驱动。
+- `growth_drivers`：对比上期或去年同期，分别返回按销量增减量排序的 `gainers/decliners`，以及按变化率排序的 `rateGainers/rateDecliners`；“增幅/降幅”问题默认使用变化率口径。
 - `compare_segments`：对比车型或细分市场。
 - `regional_opportunities`：识别强势、弱势和集中度。
 - `finalize_report`：强制最终结构化输出，必须引用 evidence id。

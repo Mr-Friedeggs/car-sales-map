@@ -13,6 +13,12 @@ const clampLimit = (value, fallback = 8) => {
   return Math.max(1, Math.min(parsed, MAX_TOP_ROWS));
 };
 
+const clampMinBase = (value, fallback = 100) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, parsed);
+};
+
 export const monthToIndex = (month) => {
   const [year, value] = String(month).split("-").map(Number);
   return year * 12 + value - 1;
@@ -306,7 +312,7 @@ const canUseMonthSummaries = ({ context = {}, filters = {}, modelIds = [], model
   );
 };
 
-const aggregateScope = async (dataClient, index, { months, context, filters, modelIds, modelQuery } = {}) => {
+const aggregateScope = async (dataClient, index, { months, context, filters, modelIds, modelQuery, forceModelDetails = false } = {}) => {
   const scopedMonths = normalizeMonths(months ?? context?.months, index);
   const models = selectModels(index, { context, filters, modelIds, modelQuery });
   const monthMap = await dataClient.getMonths(scopedMonths);
@@ -314,23 +320,30 @@ const aggregateScope = async (dataClient, index, { months, context, filters, mod
   return {
     months: scopedMonths,
     models,
-    aggregate: canUseMonthSummaries({ context, filters, modelIds, modelQuery })
+    aggregate: !forceModelDetails && canUseMonthSummaries({ context, filters, modelIds, modelQuery })
       ? aggregateMonthSummaries(monthDataList)
       : aggregateModelDetails(monthDataList, models),
   };
 };
 
 const compareRows = (currentRows = [], baseRows = [], keyFor = (row) => row.name) => {
+  const currentMap = new Map(currentRows.map((row) => [keyFor(row), row]));
   const baseMap = new Map(baseRows.map((row) => [keyFor(row), row]));
-  return currentRows
-    .map((row) => {
-      const base = baseMap.get(keyFor(row));
+  const keys = [...new Set([...currentMap.keys(), ...baseMap.keys()])];
+  return keys
+    .map((key) => {
+      const current = currentMap.get(key);
+      const base = baseMap.get(key);
+      const row = current ?? base;
+      const currentValue = current?.value ?? 0;
       const baseValue = base?.value ?? 0;
       return {
         ...row,
+        value: currentValue,
+        share: current?.share,
         base: baseValue,
-        delta: row.value - baseValue,
-        rate: percent(row.value, baseValue),
+        delta: currentValue - baseValue,
+        rate: percent(currentValue, baseValue),
       };
     })
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
@@ -338,6 +351,7 @@ const compareRows = (currentRows = [], baseRows = [], keyFor = (row) => row.name
 
 const summarizeRows = (rows, limit) =>
   rows.slice(0, limit).map((row) => ({
+    evidenceId: row.evidenceId,
     id: row.id,
     name: row.name,
     province: row.province,
@@ -495,7 +509,7 @@ export const marketAgentTools = [
     type: "function",
     function: {
       name: "growth_drivers",
-      description: "对比当前周期与上期或去年同期，找出省份、城市或车型的增长/下滑驱动。",
+      description: "对比当前周期与上期或去年同期，找出省份、城市或车型的增长/下滑驱动；同时返回按销量增减量和按变化率排序的榜单。",
       parameters: {
         type: "object",
         properties: {
@@ -506,6 +520,7 @@ export const marketAgentTools = [
           modelQuery: { type: "string" },
           filters: { type: "object" },
           limit: { type: "integer" },
+          rateMinBase: { type: "integer", description: "按变化率排序时的基准期最低销量门槛，默认 100，用于降低低基数噪声。" },
         },
       },
     },
@@ -739,6 +754,7 @@ export async function executeMarketTool(name, rawArgs, { dataClient, context, ev
       filters: args.filters,
       modelIds: args.modelIds,
       modelQuery: args.modelQuery,
+      forceModelDetails: dimension === "model",
     });
     const base = await aggregateScope(dataClient, index, {
       months: validBaseMonths,
@@ -746,13 +762,18 @@ export async function executeMarketTool(name, rawArgs, { dataClient, context, ev
       filters: args.filters,
       modelIds: args.modelIds,
       modelQuery: args.modelQuery,
+      forceModelDetails: dimension === "model",
     });
     const keyFor = dimension === "city" ? (row) => `${row.province}\u001f${row.name}` : (row) => row.id ?? row.name;
     const currentRows = dimension === "city" ? current.aggregate.city : dimension === "model" ? current.aggregate.modelRanking : current.aggregate.province;
     const baseRows = dimension === "city" ? base.aggregate.city : dimension === "model" ? base.aggregate.modelRanking : base.aggregate.province;
     const rows = compareRows(currentRows, baseRows, keyFor);
+    const rateMinBase = clampMinBase(args.rateMinBase, 100);
+    const rateRows = rows.filter((row) => row.base >= rateMinBase && row.rate !== null);
     const gainers = rows.filter((row) => row.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, limit);
     const decliners = rows.filter((row) => row.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, limit);
+    const rateGainers = rateRows.filter((row) => row.delta > 0).sort((a, b) => b.rate - a.rate).slice(0, limit);
+    const rateDecliners = rateRows.filter((row) => row.delta < 0).sort((a, b) => a.rate - b.rate).slice(0, limit);
     const totalRate = percent(current.aggregate.total, base.aggregate.total);
     const evidenceIds = [
       evidence.add({
@@ -772,39 +793,53 @@ export async function executeMarketTool(name, rawArgs, { dataClient, context, ev
         }).id,
       );
     }
-    if (gainers[0]) {
-      for (const row of gainers.slice(0, Math.min(5, limit))) {
-        evidenceIds.push(
-          evidence.add({
-            source: sourceForMonths(months),
-            metric: "增长项销量增量",
-            value: row.delta,
-            dimensions: {
-              id: row.id,
-              name: row.name,
-              manufacturer: row.manufacturer,
-              province: row.province,
-              currentValue: row.value,
-              baseValue: row.base,
-              rate: row.rate,
-            },
-          }).id,
-        );
-      }
-    }
+    const changeLabel = baseline === "last_year" ? "同比" : "环比";
+    const addChangeEvidence = (rankedRows, metric, valueFor = (row) => row.delta) =>
+      rankedRows.slice(0, limit).map((row) => {
+        const item = evidence.add({
+          source: sourceForMonths(months),
+          metric,
+          value: valueFor(row),
+          dimensions: {
+            id: row.id,
+            name: row.name,
+            manufacturer: row.manufacturer,
+            province: row.province,
+            currentValue: row.value,
+            baseValue: row.base,
+            delta: row.delta,
+            rate: row.rate,
+          },
+        });
+        evidenceIds.push(item.id);
+        return { ...row, evidenceId: item.id };
+      });
+    const gainersWithEvidence = addChangeEvidence(gainers, `${changeLabel}销量增量排名项`);
+    const declinersWithEvidence = addChangeEvidence(decliners, `${changeLabel}销量减量排名项`);
+    const rateGainersWithEvidence = addChangeEvidence(rateGainers, `${changeLabel}增幅排名项`, (row) => row.rate);
+    const rateDeclinersWithEvidence = addChangeEvidence(rateDecliners, `${changeLabel}降幅排名项`, (row) => row.rate);
+    const deltaSummary = gainers[0] || decliners[0]
+      ? `销量增减量榜首：${gainers[0]?.name ?? "-"} ${numberFmt.format(gainers[0]?.delta ?? 0)}，${decliners[0]?.name ?? "-"} ${numberFmt.format(decliners[0]?.delta ?? 0)}。`
+      : "";
+    const rateSummary = rateGainers[0] || rateDecliners[0]
+      ? `变化率榜首：${rateGainers[0]?.name ?? "-"} ${percentLabel(rateGainers[0]?.rate)}，${rateDecliners[0]?.name ?? "-"} ${percentLabel(rateDecliners[0]?.rate)}；变化率基准销量门槛 ${numberFmt.format(rateMinBase)}。`
+      : "";
     return {
       months,
       baseline,
       baselineMonths: validBaseMonths,
       dimension,
+      rateMinBase,
       total: current.aggregate.total,
       baseTotal: base.aggregate.total,
       totalDelta: current.aggregate.total - base.aggregate.total,
       totalRate,
-      gainers: summarizeRows(gainers, limit),
-      decliners: summarizeRows(decliners, limit),
+      gainers: summarizeRows(gainersWithEvidence, limit),
+      decliners: summarizeRows(declinersWithEvidence, limit),
+      rateGainers: summarizeRows(rateGainersWithEvidence, limit),
+      rateDecliners: summarizeRows(rateDeclinersWithEvidence, limit),
       evidenceIds,
-      outputSummary: `当前周期销量 ${numberFmt.format(current.aggregate.total)}，${baseline === "last_year" ? "同比" : "环比"} ${percentLabel(totalRate)}。`,
+      outputSummary: `当前周期销量 ${numberFmt.format(current.aggregate.total)}，${changeLabel} ${percentLabel(totalRate)}。${deltaSummary}${rateSummary}`,
     };
   }
 
@@ -968,6 +1003,7 @@ const buildSystemPrompt = () => `
 6. 用户问“为什么/原因”时，只能回答“销量数据上可观察到的驱动项”：例如哪个车型、省份或城市贡献了环比/同比增量。不要把销量变化解释成真实商业因果。
 7. 禁止使用“得益于、低价、价格门槛、营销、产品力、换电、产能、订单、用户覆盖、无强力竞争对手、绝对份额优势”等工具未证明的说法。
 8. 如果提到某个车型/地区/细分市场，必须来自工具返回的 rows 或 evidence；如果 L60 不是最大增量项，不要把它写成主要原因。
+9. 用户问“增幅/降幅/涨幅/跌幅最大”时，使用 growth_drivers 返回的 rateGainers/rateDecliners，并说明变化率基准销量门槛；用户问“增量/减量/贡献/拉动最大”时，使用 gainers/decliners。
 `;
 
 const buildUserPrompt = ({ question, context }) =>

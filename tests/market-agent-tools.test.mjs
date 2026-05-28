@@ -89,7 +89,32 @@ test("growth_drivers exposes model-level NIO monthly lift with evidence", async 
   assert.equal(result.gainers[0].delta, 5328);
   assert.equal(result.gainers[2].name, "乐道L60");
   assert.equal(result.gainers[2].delta, 1717);
-  assert.ok(evidence.rows.some((row) => row.metric === "增长项销量增量" && row.dimensions.name === "乐道L60"));
+  assert.ok(evidence.rows.some((row) => row.metric === "环比销量增量排名项" && row.dimensions.name === "乐道L60"));
+});
+
+test("growth_drivers separates absolute delta rankings from rate rankings", async () => {
+  const evidence = makeEvidence();
+  const result = await executeMarketTool("growth_drivers", {
+    months: ["2026-03"],
+    baseline: "previous",
+    dimension: "model",
+    limit: 12,
+    rateMinBase: 100,
+  }, {
+    dataClient,
+    context: {},
+    evidence,
+  });
+
+  assert.equal(result.decliners[0].name, "小米YU7");
+  assert.equal(result.decliners[0].delta, -6346);
+  assert.equal(result.rateDecliners[0].name, "捷途X70S");
+  assert.equal(result.rateDecliners[0].value, 0);
+  assert.equal(result.rateDecliners[0].base, 279);
+  assert.equal(result.rateDecliners[0].rate, -1);
+  assert.ok(result.decliners[0].rate > result.rateDecliners[0].rate);
+  assert.ok(evidence.rows.some((row) => row.metric === "环比销量减量排名项" && row.dimensions.name === "小米YU7"));
+  assert.ok(evidence.rows.some((row) => row.metric === "环比降幅排名项" && row.dimensions.name === "捷途X70S"));
 });
 
 test("agent loop executes data tool then validates finalize_report evidence", async () => {
